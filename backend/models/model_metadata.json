@@ -1,0 +1,47 @@
+{
+  "best_model": "XGBoost",
+  "best_auc": 0.9176697159364468,
+  "feature_importance": {
+    "Age": 0.11134971678256989,
+    "Gender": 0.05317745357751846,
+    "Admission_Type": 0.26000863313674927,
+    "Department": 0.19545991718769073,
+    "Comorbidity": 0.16324485838413239,
+    "Procedures": 0.2167593240737915
+  },
+  "feature_columns": [
+    "Age",
+    "Gender",
+    "Admission_Type",
+    "Department",
+    "Comorbidity",
+    "Procedures"
+  ],
+  "trained_at": "2025-12-30T13:35:39.749876+00:00",
+  "mappings": {
+    "Gender": {
+      "Female": 0,
+      "Male": 1
+    },
+    "Admission_Type": {
+      "Elective": 0,
+      "Emergency": 1,
+      "Referral": 2
+    },
+    "Department": {
+      "Cardiology": 0,
+      "Neurology": 1,
+      "Oncology": 2,
+      "Orthopedics": 3,
+      "Pediatrics": 4
+    },
+    "Comorbidity": {
+      "Asthma": 0,
+      "Cancer": 1,
+      "Diabetes": 2,
+      "Heart Disease": 3,
+      "Hypertension": 4,
+      "Unknown": 5
+    }
+  }
+}
