@@ -96,7 +96,6 @@ def predict_patient_stay(patient_data, artifacts):
         print(f"Prediction logic error: {e}")
         raise e
 
-# Legacy function placeholder if called by existing server code, though we should update server.py
 def load_real_dataset():
     """Load the comprehensive healthcare dataset"""
     try:
@@ -111,20 +110,27 @@ def load_real_dataset():
 
 def train_and_compare_models(df):
     """
-    Train models using the dataset and return comparison results.
-    Generates a binary target: 0 for <=7 days, 1 for >7 days.
+    Train 5 models (Logistic, RF, GB, HistGB, Voting).
+    Returns comparison results and best pipeline.
     """
     from sklearn.model_selection import train_test_split
     from sklearn.compose import ColumnTransformer
     from sklearn.pipeline import Pipeline
     from sklearn.impute import SimpleImputer
     from sklearn.preprocessing import OneHotEncoder, StandardScaler
-    from sklearn.ensemble import RandomForestClassifier
-    from xgboost import XGBClassifier
-    from sklearn.metrics import roc_auc_score, accuracy_score
     
+    # Models
+    from sklearn.linear_model import LogisticRegression
+    from sklearn.ensemble import (
+        RandomForestClassifier, 
+        GradientBoostingClassifier, 
+        HistGradientBoostingClassifier,
+        VotingClassifier
+    )
+    from sklearn.metrics import roc_auc_score, accuracy_score
+    import heapq
+
     # 1. Prepare Target
-    # comprehensive dataset has 'Stay_Days'
     if 'Stay_Days' not in df.columns:
         raise ValueError("Dataset missing 'Stay_Days' column")
         
@@ -151,16 +157,29 @@ def train_and_compare_models(df):
             ('cat', categorical_transformer, categorical_features)
         ])
         
-    # 3. Model Pipelines
-    models = {
-        'RandomForest': Pipeline(steps=[('preprocessor', preprocessor),
-                                        ('classifier', RandomForestClassifier(n_estimators=100, random_state=42))]),
-        'XGBoost': Pipeline(steps=[('preprocessor', preprocessor),
-                                   ('classifier', XGBClassifier(use_label_encoder=False, eval_metric='logloss', random_state=42))])
+    # 3. Define Base Models
+    base_models = {
+        'LogisticRegression': Pipeline(steps=[
+            ('preprocessor', preprocessor),
+            ('classifier', LogisticRegression(max_iter=1000, random_state=42))
+        ]),
+        'RandomForest': Pipeline(steps=[
+            ('preprocessor', preprocessor),
+            ('classifier', RandomForestClassifier(n_estimators=100, random_state=42))
+        ]),
+        'GradientBoosting': Pipeline(steps=[
+            ('preprocessor', preprocessor),
+            ('classifier', GradientBoostingClassifier(n_estimators=100, random_state=42))
+        ]),
+        'HistGradientBoosting': Pipeline(steps=[
+            ('preprocessor', preprocessor),
+            ('classifier', HistGradientBoostingClassifier(random_state=42))
+        ])
     }
     
-    # 4. Train and Evaluate
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+    # 4. Train Base Models
+    # Use stratify to ensure balanced split
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
     
     results = {
         'model_comparison': {},
@@ -169,81 +188,119 @@ def train_and_compare_models(df):
         'feature_importance': {}
     }
     
-    best_model_pipeline = None
+    trained_estimators = []
     
-    for name, pipeline in models.items():
-        print(f"Training {name}...")
-        pipeline.fit(X_train, y_train)
-        
-        y_pred = pipeline.predict(X_test)
-        y_probs = pipeline.predict_proba(X_test)[:, 1]
-        
-        auc = roc_auc_score(y_test, y_probs)
-        acc = accuracy_score(y_test, y_pred)
-        
-        results['model_comparison'][name] = {'auc': float(auc), 'accuracy': float(acc)}
-        
-        if auc > results['best_auc']:
-            results['best_auc'] = float(auc)
-            results['best_model_name'] = name
-            best_model_pipeline = pipeline
-            
-    # Extract feature importance from the best model
-    if results['best_model_name']:
+    print("Starting training of base models...")
+    for name, pipeline in base_models.items():
         try:
-            pipeline = best_model_pipeline
-            classifier = pipeline.named_steps['classifier']
-            preprocessor = pipeline.named_steps['preprocessor']
+            print(f"Training {name}...")
+            # HistGradientBoosting handles dense/sparse automatically in modern sklearn
+            pipeline.fit(X_train, y_train)
             
-            if hasattr(classifier, 'feature_importances_'):
-                importances = classifier.feature_importances_
-                
-                # Get feature names from preprocessor using get_feature_names_out()
-                # This returns names like 'num__Age', 'cat__Gender_Male'
-                feature_names = preprocessor.get_feature_names_out()
-                
-                # Clean prefix "num__" or "cat__" for better readability
-                clean_names = [name.split('__')[-1] for name in feature_names]
-                
-                # Create dictionary and sort & CAST TO FLOAT
-                feat_imp = {k: float(v) for k, v in zip(clean_names, importances)}
-                
-                # --- AGGREGATE FEATURE IMPORTANCE ---
-                # Group one-hot encoded features back to their original names
-                aggregated_imp = {}
-                for feature, score in feat_imp.items():
-                    # Check if it's a one-hot feature (e.g., "Department_Cardiology" -> "Department")
-                    # We check against our known categorical list to be safe, or just use the prefix logic
-                    base_feature = feature
-                    
-                    # Logic: If feature starts with a known categorical column name followed by _, group it
-                    # Known categorical features: 'Gender', 'Admission_Type', 'Insurance_Type', 'Department', 'Diagnosis', 'Ward_Type'
-                    for cat_col in categorical_features:
-                        if feature.startswith(f"{cat_col}_"):
-                            base_feature = cat_col
-                            break
-                    
-                    if base_feature in aggregated_imp:
-                        aggregated_imp[base_feature] += score
-                    else:
-                        aggregated_imp[base_feature] = score
-
-                # Round for cleaner display
-                aggregated_imp = {k: round(v, 4) for k, v in aggregated_imp.items()}
-                
-                # Sort descending
-                sorted_imp = dict(sorted(aggregated_imp.items(), key=lambda item: item[1], reverse=True))
-                
-                results['feature_importance'] = sorted_imp
+            y_pred = pipeline.predict(X_test)
+            if hasattr(pipeline, "predict_proba"):
+                y_probs = pipeline.predict_proba(X_test)[:, 1]
             else:
-                results['feature_importance'] = {}
+                y_probs = y_pred 
                 
-        except Exception as e:
-            print(f"Could not extract feature importance: {e}")
-            results['feature_importance'] = {}
+            auc = roc_auc_score(y_test, y_probs)
+            acc = accuracy_score(y_test, y_pred)
             
-    # Return the fit pipeline and results
-    results['best_pipeline'] = best_model_pipeline
+            results['model_comparison'][name] = {'auc': float(auc), 'accuracy': float(acc)}
+            trained_estimators.append((name, pipeline, auc))
+            
+        except Exception as e:
+            print(f"Failed to train {name}: {e}")
+
+    # 5. Select Top 3 Models
+    trained_estimators.sort(key=lambda x: x[2], reverse=True)
+    top_3_estimators = trained_estimators[:3]
+    print(f"Top 3 Models selected for Ensemble: {[x[0] for x in top_3_estimators]}")
+    
+    # 6. Train Voting Ensemble
+    ensemble_estimators = []
+    for name, _, _ in top_3_estimators:
+        # Re-use the pipeline structure from base_models to be safe
+        ensemble_estimators.append((name, base_models[name]))
+        
+    voting_clf = VotingClassifier(estimators=ensemble_estimators, voting='soft')
+    
+    print("Training Voting Ensemble...")
+    try:
+        voting_clf.fit(X_train, y_train)
+        
+        v_pred = voting_clf.predict(X_test)
+        v_probs = voting_clf.predict_proba(X_test)[:, 1]
+        
+        v_auc = roc_auc_score(y_test, v_probs)
+        v_acc = accuracy_score(y_test, v_pred)
+        
+        results['model_comparison']['VotingEnsemble'] = {'auc': float(v_auc), 'accuracy': float(v_acc)}
+        
+        # Add to comparison list
+        trained_estimators.append(('VotingEnsemble', voting_clf, v_auc))
+        
+    except Exception as e:
+        print(f"Failed to train Voting Ensemble: {e}")
+        
+    # 7. Identify Best Model
+    # Sort again, ensemble might be top
+    trained_estimators.sort(key=lambda x: x[2], reverse=True)
+    best_name, best_pipeline_obj, best_auc_val = trained_estimators[0]
+    
+    results['best_model_name'] = best_name
+    results['best_auc'] = float(best_auc_val)
+    results['best_pipeline'] = best_pipeline_obj
+    
+    print(f"Best Model: {best_name} (AUC: {best_auc_val:.4f})")
+
+    # 8. Feature Importance
+    try:
+        # Helper to get feature importance from a pipeline
+        def get_importance(pip):
+            clf = pip.named_steps['classifier']
+            pre = pip.named_steps['preprocessor']
+            if hasattr(clf, 'feature_importances_'):
+                return clf.feature_importances_, pre
+            if hasattr(clf, 'coef_'):
+                return clf.coef_[0], pre # Logistic Regression
+            return None, None
+
+        importances = None
+        preproc_ref = None
+        
+        if best_name == 'VotingEnsemble':
+            # Use the best single model for feature importance display
+            print("Using best single model for feature importance visualization.")
+            best_single = [x for x in trained_estimators if x[0] != 'VotingEnsemble'][0]
+            importances, preproc_ref = get_importance(best_single[1])
+        else:
+            importances, preproc_ref = get_importance(best_pipeline_obj)
+
+        if importances is not None:
+             # Get feature names
+            feature_names = preproc_ref.get_feature_names_out()
+            clean_names = [name.split('__')[-1] for name in feature_names]
+            feat_imp = {k: float(v) for k, v in zip(clean_names, importances)}
+            
+            # Aggregate
+            aggregated_imp = {}
+            for feature, score in feat_imp.items():
+                base_feature = feature
+                for cat_col in categorical_features:
+                    if feature.startswith(f"{cat_col}_"):
+                        base_feature = cat_col
+                        break
+                aggregated_imp[base_feature] = aggregated_imp.get(base_feature, 0) + abs(score)
+
+            results['feature_importance'] = dict(sorted(aggregated_imp.items(), key=lambda item: item[1], reverse=True))
+        else:
+             results['feature_importance'] = {}
+
+    except Exception as e:
+        print(f"Feature importance extraction warning: {e}")
+        results['feature_importance'] = {}
+
     return results
 
 def save_model_artifacts(results):
