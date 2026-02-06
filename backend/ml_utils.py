@@ -1,222 +1,272 @@
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestClassifier, GradientBoostingClassifier
-from sklearn.linear_model import LogisticRegression
-from xgboost import XGBClassifier
-from sklearn.metrics import roc_auc_score, confusion_matrix, accuracy_score, classification_report
-from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.impute import SimpleImputer
 import joblib
-import json
-from datetime import datetime, timezone
 import os
+from datetime import datetime, timezone
 
-# Define expected columns for the API
-FEATURE_COLS = ['Age', 'Gender', 'Admission_Type', 'Department', 'Comorbidity', 'Procedures']
-TARGET_COL = 'Stay_Category' # Derived from Stay_Duration
+# Define comprehensive features expected by the new model
+FEATURE_COLS = [
+    'Age', 'Gender', 'Admission_Type', 'Insurance_Type', 
+    'Num_Comorbidities', 'Visitors_Count', 'Blood_Sugar_Level', 'Admission_Deposit',
+    'Department', 'Diagnosis', 'Severity_Score', 'Ward_Type'
+]
 
-def load_real_dataset():
-    """Load the Indian Hospital Dataset"""
+MODEL_PATH = os.path.join(os.path.dirname(__file__), 'models/best_hospital_stay_model_comprehensive.pkl')
+
+def load_model_artifacts():
+    """Load the pre-trained comprehensive model pipeline"""
     try:
-        df = pd.read_csv('indian_hospital_data_large.csv')
-        df['Stay_Category'] = (df['Stay_Duration'] > 7).astype(int)
-        return df
+        if not os.path.exists(MODEL_PATH):
+            print(f"Error: Model not found at {MODEL_PATH}")
+            return None
+            
+        data = joblib.load(MODEL_PATH)
+        return {
+            "model": data["model"],
+            "metadata": data["metadata"]
+        }
+    except Exception as e:
+        print(f"Error loading model artifacts: {e}")
+        return None
+
+def predict_patient_stay(patient_data, artifacts):
+    """
+    Predict length of stay using the comprehensive pipeline.
+    patient_data: dict containing keys for all FEATURE_COLS
+    """
+    model = artifacts['model']
+    
+    # Create DataFrame from input
+    # Ensure all required columns are present, fill missing with defaults if necessary
+    input_data = {}
+    
+    for col in FEATURE_COLS:
+        val = patient_data.get(col)
+        # Handle renaming or mapping if the API input names differ lightly
+        # For now, assuming API sends matching keys or we map them in server.py
+        if val is None:
+             # Safe defaults for missing values to prevent crash
+             if col == 'Visitors_Count': val = 0
+             elif col == 'Num_Comorbidities': val = 0
+             elif col == 'Severity_Score': val = 1
+             elif col == 'Blood_Sugar_Level': val = 120
+             elif col == 'Admission_Deposit': val = 5000
+             else: val = "Unknown"
+        input_data[col] = [val]
+
+    df = pd.DataFrame(input_data)
+    
+    # The pipeline handles all encoding/scaling internaly
+    try:
+        prediction = model.predict(df)[0]
+        probability = model.predict_proba(df)[0]
+        
+        # Generate Contributing Factors (Heuristic from previous project)
+        contributing_factors = []
+        
+        # Extract values (they are lists in input_data)
+        severity = input_data.get('Severity_Score', [0])[0]
+        ward = input_data.get('Ward_Type', [''])[0]
+        diagnosis = input_data.get('Diagnosis', [''])[0]
+        age = input_data.get('Age', [0])[0]
+        comorb = input_data.get('Num_Comorbidities', [0])[0]
+        adm_type = input_data.get('Admission_Type', [''])[0]
+        
+        if severity >= 4:
+            contributing_factors.append(f"Critical Severity (Score: {severity})")
+        if ward == "ICU":
+            contributing_factors.append("ICU Admission")
+        if diagnosis in ['Stroke', 'Heart Failure', 'Hip Fracture']:
+            contributing_factors.append(f"High Risk Condition: {diagnosis}")
+        if age > 70:
+            contributing_factors.append(f"Elderly Patient ({age})")
+        if comorb > 2:
+            contributing_factors.append(f"Multiple Comorbidities ({comorb})")
+        if adm_type == "Trauma":
+            contributing_factors.append("Trauma Case")
+            
+        return {
+            'prediction': int(prediction),
+            'prediction_label': 'Long Stay (>7 days)' if prediction == 1 else 'Short Stay (≤7 days)',
+            'confidence': float(probability[prediction]),
+            'probabilities': {'short_stay': float(probability[0]), 'long_stay': float(probability[1])},
+            'contributing_factors': contributing_factors
+        }
+    except Exception as e:
+        print(f"Prediction logic error: {e}")
+        raise e
+
+# Legacy function placeholder if called by existing server code, though we should update server.py
+def load_real_dataset():
+    """Load the comprehensive healthcare dataset"""
+    try:
+        data_path = os.path.join(os.path.dirname(__file__), 'healthcare_dataset_comprehensive.csv')
+        if not os.path.exists(data_path):
+            print(f"Dataset not found at {data_path}")
+            return None
+        return pd.read_csv(data_path)
     except Exception as e:
         print(f"Error loading dataset: {e}")
         return None
 
 def train_and_compare_models(df):
-    """Train multiple models and compare their performance"""
-    print("DEBUG: Starting training...")
+    """
+    Train models using the dataset and return comparison results.
+    Generates a binary target: 0 for <=7 days, 1 for >7 days.
+    """
+    from sklearn.model_selection import train_test_split
+    from sklearn.compose import ColumnTransformer
+    from sklearn.pipeline import Pipeline
+    from sklearn.impute import SimpleImputer
+    from sklearn.preprocessing import OneHotEncoder, StandardScaler
+    from sklearn.ensemble import RandomForestClassifier
+    from xgboost import XGBClassifier
+    from sklearn.metrics import roc_auc_score, accuracy_score
     
-    # 1. Select Features
-    X = df[FEATURE_COLS].copy()
-    y = df[TARGET_COL]
-    
-    # 2. Encode Categoricals
-    encoders = {}
-    cat_cols = ['Gender', 'Admission_Type', 'Department', 'Comorbidity']
-    
-    for col in cat_cols:
-        le = LabelEncoder()
-        X[col] = X[col].fillna("Unknown").astype(str)
-        X[col] = le.fit_transform(X[col])
-        encoders[col] = le
+    # 1. Prepare Target
+    # comprehensive dataset has 'Stay_Days'
+    if 'Stay_Days' not in df.columns:
+        raise ValueError("Dataset missing 'Stay_Days' column")
         
-    # 3. Handle Numerical
-    num_cols = ['Age', 'Procedures']
-    imputer = SimpleImputer(strategy='median')
-    X[num_cols] = imputer.fit_transform(X[num_cols])
+    y = (df['Stay_Days'] > 7).astype(int)
+    X = df[FEATURE_COLS]
     
-    # 4. Split
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
+    # 2. Preprocessing Pipeline
+    numeric_features = ['Age', 'Num_Comorbidities', 'Visitors_Count', 'Blood_Sugar_Level', 'Admission_Deposit', 'Severity_Score']
+    categorical_features = ['Gender', 'Admission_Type', 'Insurance_Type', 'Department', 'Diagnosis', 'Ward_Type']
     
-    print(f"DEBUG: X_train type: {type(X_train)}")
-    print(f"DEBUG: X_train columns: {X_train.columns.tolist()}")
-
-    # 5. Scale
-    scaler = StandardScaler()
-    X_train_scaled = scaler.fit_transform(X_train)
-    X_test_scaled = scaler.transform(X_test)
+    numeric_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy='median')),
+        ('scaler', StandardScaler())
+    ])
     
-    # Define models
+    categorical_transformer = Pipeline(steps=[
+        ('imputer', SimpleImputer(strategy='constant', fill_value='missing')),
+        ('onehot', OneHotEncoder(handle_unknown='ignore'))
+    ])
+    
+    preprocessor = ColumnTransformer(
+        transformers=[
+            ('num', numeric_transformer, numeric_features),
+            ('cat', categorical_transformer, categorical_features)
+        ])
+        
+    # 3. Model Pipelines
     models = {
-        'Random Forest': RandomForestClassifier(n_estimators=100, max_depth=10, random_state=42),
-        'XGBoost': XGBClassifier(n_estimators=100, max_depth=6, learning_rate=0.1, use_label_encoder=False, eval_metric='logloss', random_state=42),
-        'Gradient Boosting': GradientBoostingClassifier(n_estimators=100, max_depth=5, random_state=42),
-        'Logistic Regression': LogisticRegression(max_iter=1000, random_state=42)
+        'RandomForest': Pipeline(steps=[('preprocessor', preprocessor),
+                                        ('classifier', RandomForestClassifier(n_estimators=100, random_state=42))]),
+        'XGBoost': Pipeline(steps=[('preprocessor', preprocessor),
+                                   ('classifier', XGBClassifier(use_label_encoder=False, eval_metric='logloss', random_state=42))])
     }
     
-    results = {}
-    best_model_name = None
-    best_auc = 0
-    best_model = None
+    # 4. Train and Evaluate
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
     
-    print("Training models...")
-    for name, model in models.items():
-        if name == 'Logistic Regression':
-            model.fit(X_train_scaled, y_train)
-            y_pred_proba = model.predict_proba(X_test_scaled)[:, 1]
-            y_pred = model.predict(X_test_scaled)
-        else:
-            print(f"DEBUG: Fitting {name} with DataFrame...")
-            model.fit(X_train, y_train)
-            y_pred_proba = model.predict_proba(X_test)[:, 1]
-            y_pred = model.predict(X_test)
-            
-        auc = roc_auc_score(y_test, y_pred_proba)
+    results = {
+        'model_comparison': {},
+        'best_model_name': None,
+        'best_auc': -1,
+        'feature_importance': {}
+    }
+    
+    best_model_pipeline = None
+    
+    for name, pipeline in models.items():
+        print(f"Training {name}...")
+        pipeline.fit(X_train, y_train)
+        
+        y_pred = pipeline.predict(X_test)
+        y_probs = pipeline.predict_proba(X_test)[:, 1]
+        
+        auc = roc_auc_score(y_test, y_probs)
         acc = accuracy_score(y_test, y_pred)
         
-        results[name] = {'auc': float(auc), 'accuracy': float(acc)}
-        print(f"{name} - AUC: {auc:.4f}, Acc: {acc:.4f}")
+        results['model_comparison'][name] = {'auc': float(auc), 'accuracy': float(acc)}
         
-        if auc > best_auc:
-            best_auc = auc
-            best_model_name = name
-            best_model = model
+        if auc > results['best_auc']:
+            results['best_auc'] = float(auc)
+            results['best_model_name'] = name
+            best_model_pipeline = pipeline
             
-    # Feature Importance
-    if hasattr(best_model, 'feature_importances_'):
-        fi = dict(zip(FEATURE_COLS, best_model.feature_importances_.tolist()))
-    elif hasattr(best_model, 'coef_'):
-        fi = dict(zip(FEATURE_COLS, np.abs(best_model.coef_[0]).tolist()))
-    else:
-        fi = {}
-        
-    return {
-        'model_comparison': results,
-        'best_model_name': best_model_name,
-        'best_auc': float(best_auc),
-        'feature_importance': fi,
-        'scaler': scaler,
-        'trained_model': best_model,
-        'encoders': encoders,
-        'imputer': imputer
-    }
-
-def save_model_artifacts(train_results, output_dir='models'):
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Save Model
-    joblib.dump(train_results['trained_model'], os.path.join(output_dir, 'best_model.pkl'))
-    joblib.dump(train_results['scaler'], os.path.join(output_dir, 'scaler.pkl'))
-    joblib.dump(train_results['imputer'], os.path.join(output_dir, 'imputer.pkl'))
-    joblib.dump(train_results['encoders'], os.path.join(output_dir, 'encoders.pkl'))
-    
-    # Save Metadata
-    metadata = {
-        'best_model': train_results['best_model_name'],
-        'best_auc': train_results['best_auc'],
-        'feature_importance': train_results['feature_importance'],
-        'feature_columns': FEATURE_COLS,
-        'trained_at': datetime.now(timezone.utc).isoformat(),
-        'mappings': {col: dict(zip(enc.classes_, range(len(enc.classes_)))) 
-                     for col, enc in train_results['encoders'].items()}
-    }
-    
-    with open(os.path.join(output_dir, 'model_metadata.json'), 'w') as f:
-        json.dump(metadata, f, indent=2, default=str)
-        
-    return output_dir
-
-def load_model_artifacts(model_dir='models'):
-    try:
-        return {
-            'model': joblib.load(os.path.join(model_dir, 'best_model.pkl')),
-            'scaler': joblib.load(os.path.join(model_dir, 'scaler.pkl')),
-            'imputer': joblib.load(os.path.join(model_dir, 'imputer.pkl')),
-            'encoders': joblib.load(os.path.join(model_dir, 'encoders.pkl')),
-            'metadata': json.load(open(os.path.join(model_dir, 'model_metadata.json')))
-        }
-    except Exception as e:
-        print(f"Error loading artifacts: {e}")
-        return None
-
-def predict_patient_stay(patient_data, artifacts):
-    """
-    patient_data: dict with keys matching FEATURE_COLS
-    """
-    model = artifacts['model']
-    scaler = artifacts['scaler']
-    encoders = artifacts['encoders']
-    imputer = artifacts['imputer']
-    
-    print("DEBUG: Prediction Request Data:", patient_data)
-
-    # Create DF
-    df = pd.DataFrame([patient_data])
-    
-    # Ensure columns exist
-    for col in FEATURE_COLS:
-        if col not in df.columns:
-            df[col] = np.nan
-            
-    # Encode Categoricals
-    for col, enc in encoders.items():
-        known_classes = set(enc.classes_)
-        df[col] = df[col].astype(str).map(lambda x: x if x in known_classes else "Unknown")
+    # Extract feature importance from the best model
+    if results['best_model_name']:
         try:
-             df[col] = enc.transform(df[col])
-        except ValueError:
-             # Fallback
-             df[col] = 0
-             
-    # Impute
-    # FIX: ONLY IMPUTE NUMERICAL COLUMNS
-    num_cols = ['Age', 'Procedures']
-    # Ensure num_cols exist
-    for col in num_cols:
-        if col not in df.columns:
-            df[col] = 0.0 # Default fallback
+            pipeline = best_model_pipeline
+            classifier = pipeline.named_steps['classifier']
+            preprocessor = pipeline.named_steps['preprocessor']
             
-    try:
-        df[num_cols] = imputer.transform(df[num_cols])
-    except Exception as e:
-        print(f"DEBUG: Imputer transform failed: {e}")
-        # In case of failure, prevent crash if possible, but imputer really should work on correct cols
-        pass
-    
-    is_logreg = artifacts['metadata']['best_model'] == 'Logistic Regression'
-    print(f"DEBUG: Best model is LogReg? {is_logreg}")
+            if hasattr(classifier, 'feature_importances_'):
+                importances = classifier.feature_importances_
+                
+                # Get feature names from preprocessor using get_feature_names_out()
+                # This returns names like 'num__Age', 'cat__Gender_Male'
+                feature_names = preprocessor.get_feature_names_out()
+                
+                # Clean prefix "num__" or "cat__" for better readability
+                clean_names = [name.split('__')[-1] for name in feature_names]
+                
+                # Create dictionary and sort & CAST TO FLOAT
+                feat_imp = {k: float(v) for k, v in zip(clean_names, importances)}
+                
+                # --- AGGREGATE FEATURE IMPORTANCE ---
+                # Group one-hot encoded features back to their original names
+                aggregated_imp = {}
+                for feature, score in feat_imp.items():
+                    # Check if it's a one-hot feature (e.g., "Department_Cardiology" -> "Department")
+                    # We check against our known categorical list to be safe, or just use the prefix logic
+                    base_feature = feature
+                    
+                    # Logic: If feature starts with a known categorical column name followed by _, group it
+                    # Known categorical features: 'Gender', 'Admission_Type', 'Insurance_Type', 'Department', 'Diagnosis', 'Ward_Type'
+                    for cat_col in categorical_features:
+                        if feature.startswith(f"{cat_col}_"):
+                            base_feature = cat_col
+                            break
+                    
+                    if base_feature in aggregated_imp:
+                        aggregated_imp[base_feature] += score
+                    else:
+                        aggregated_imp[base_feature] = score
 
-    if is_logreg:
-        X_final = scaler.transform(df[FEATURE_COLS])
-        prediction = model.predict(X_final)[0]
-        probability = model.predict_proba(X_final)[0]
-    else:
-        # Trees used raw encoded features.
-        # CRITICAL: Convert to numpy array to bypass strict feature name checking causing issues.
-        X_final = df[FEATURE_COLS].values
-        print(f"DEBUG: X_final type: {type(X_final)}")
-        print(f"DEBUG: X_final shape: {X_final.shape}")
+                # Round for cleaner display
+                aggregated_imp = {k: round(v, 4) for k, v in aggregated_imp.items()}
+                
+                # Sort descending
+                sorted_imp = dict(sorted(aggregated_imp.items(), key=lambda item: item[1], reverse=True))
+                
+                results['feature_importance'] = sorted_imp
+            else:
+                results['feature_importance'] = {}
+                
+        except Exception as e:
+            print(f"Could not extract feature importance: {e}")
+            results['feature_importance'] = {}
+            
+    # Return the fit pipeline and results
+    results['best_pipeline'] = best_model_pipeline
+    return results
+
+def save_model_artifacts(results):
+    """Save the best model pipeline and metadata"""
+    try:
+        model = results['best_pipeline']
+        metadata = {
+            'best_model': results['best_model_name'],
+            'best_auc': results['best_auc'],
+            'feature_importance': results['feature_importance'],
+            'model_comparison': results['model_comparison'],
+            'timestamp': datetime.now(timezone.utc).isoformat()
+        }
         
-        prediction = model.predict(X_final)[0]
-        probability = model.predict_proba(X_final)[0]
-    
-    return {
-        'prediction': int(prediction),
-        'prediction_label': 'Long Stay (>7 days)' if prediction == 1 else 'Short Stay (≤7 days)',
-        'confidence': float(probability[prediction]),
-        'probabilities': {'short_stay': float(probability[0]), 'long_stay': float(probability[1])}
-    }
+        # Ensure directory exists
+        os.makedirs(os.path.dirname(MODEL_PATH), exist_ok=True)
+        
+        joblib.dump({
+            'model': model,
+            'metadata': metadata
+        }, MODEL_PATH)
+        
+        return os.path.dirname(MODEL_PATH)
+    except Exception as e:
+        print(f"Error saving artifacts: {e}")
+        return None

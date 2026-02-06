@@ -116,7 +116,6 @@ const PatientRecords = () => {
                       <div>
                         <p className="text-slate-500">Age / Gender</p>
                         <p className="font-medium text-slate-900">
-                          {/* Use capitalized keys directly */}
                           {patient.patient_data?.Age ?? 'N/A'} / {patient.patient_data?.Gender ?? 'N/A'}
                         </p>
                       </div>
@@ -127,33 +126,66 @@ const PatientRecords = () => {
                         </p>
                       </div>
                       <div>
-                        <p className="text-slate-500">Confidence</p>
-                        <p className="font-mono font-medium text-slate-900">
-                          {/* Safe access and default to 0 */}
-                          {((patient.confidence || 0) * 100).toFixed(1)}%
-                        </p>
-                      </div>
-                      <div>
-                        <p className="text-slate-500">Admission Type</p>
+                        <p className="text-slate-500">Ward Type</p>
                         <p className="font-medium text-slate-900">
-                           {patient.patient_data?.Admission_Type ?? 'Unknown'}
+                          {patient.patient_data?.Ward_Type ?? 'General'}
                         </p>
                       </div>
                       <div>
                         <p className="text-slate-500">Department</p>
                         <p className="font-medium text-slate-900">
-                           {patient.patient_data?.Department ?? 'General'}
+                          {patient.patient_data?.Department ?? 'General'}
                         </p>
                       </div>
                       <div>
-                        <p className="text-slate-500">Comorbidity</p>
+                        <p className="text-slate-500">Diagnosis</p>
+                        <p className="font-medium text-slate-900truncate" title={patient.patient_data?.Diagnosis}>
+                          {patient.patient_data?.Diagnosis ?? 'Unknown'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500">Severity Score</p>
+                        <div className="flex items-center">
+                          <span className={`font-bold ${(patient.patient_data?.Severity_Score || 0) > 3 ? 'text-red-600' : 'text-slate-900'
+                            }`}>
+                            {patient.patient_data?.Severity_Score ?? 'N/A'}
+                          </span>
+                          <span className="text-slate-400 text-xs ml-1">/ 5</span>
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-slate-500">Admission Type</p>
                         <p className="font-medium text-slate-900">
-                           {patient.patient_data?.Comorbidity ?? 'None'}
+                          {patient.patient_data?.Admission_Type ?? 'Unknown'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500">Insurance</p>
+                        <p className="font-medium text-slate-900">
+                          {patient.patient_data?.Insurance_Type ?? 'None'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500">Comorbidities</p>
+                        <p className="font-medium text-slate-900">
+                          {patient.patient_data?.Num_Comorbidities ?? 0}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500">Deposit</p>
+                        <p className="font-mono text-slate-900">
+                          ₹{patient.patient_data?.Admission_Deposit?.toLocaleString() ?? 0}
                         </p>
                       </div>
                       <div>
                         <p className="text-slate-500">Predicted Discharge</p>
                         <p className="font-medium text-slate-900">{patient.predicted_discharge ?? 'Pending'}</p>
+                      </div>
+                      <div>
+                        <p className="text-slate-500">Confidence</p>
+                        <p className="font-mono font-medium text-slate-900">
+                          {((patient.confidence || 0) * 100).toFixed(1)}%
+                        </p>
                       </div>
                     </div>
                   </div>

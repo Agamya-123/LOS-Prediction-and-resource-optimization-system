@@ -70,16 +70,14 @@ const Dashboard = () => {
           <h1 className="text-4xl font-bold text-slate-900 tracking-tight">Dashboard</h1>
           <p className="text-base text-slate-600 mt-1">Real-time hospital bed management and predictions</p>
         </div>
-        {!modelInfo && (
-          <Button
-            onClick={handleTrainModel}
-            disabled={training}
-            data-testid="train-model-button"
-            className="bg-teal-600 hover:bg-teal-700"
-          >
-            {training ? 'Training...' : 'Train ML Model'}
-          </Button>
-        )}
+        <Button
+          onClick={handleTrainModel}
+          disabled={training}
+          data-testid="train-model-button"
+          className="bg-teal-600 hover:bg-teal-700"
+        >
+          {training ? 'Training...' : (modelInfo ? 'Retrain ML Model' : 'Train ML Model')}
+        </Button>
       </div>
 
       {/* Model Status Alert */}
@@ -199,11 +197,11 @@ const Dashboard = () => {
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-200">
-                <p className="text-xs text-slate-600 mb-1">Short Stay (0-5d)</p>
+                <p className="text-xs text-slate-600 mb-1">Short Stay (0-7d)</p>
                 <p className="text-2xl font-bold font-mono text-emerald-700">{stats?.short_stay_count || 0}</p>
               </div>
               <div className="p-4 bg-amber-50 rounded-lg border border-amber-200">
-                <p className="text-xs text-slate-600 mb-1">Long Stay (6+d)</p>
+                <p className="text-xs text-slate-600 mb-1">Long Stay (7+d)</p>
                 <p className="text-2xl font-bold font-mono text-amber-700">{stats?.long_stay_count || 0}</p>
               </div>
             </div>

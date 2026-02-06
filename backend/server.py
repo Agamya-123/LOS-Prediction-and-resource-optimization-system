@@ -43,14 +43,21 @@ class PatientInput(BaseModel):
     Gender: str          # Male, Female
     Admission_Type: str  # Emergency, Urgent, Elective
     Department: str      # Cardiology, etc.
-    Comorbidity: str     # Diabetes, etc.
-    Procedures: int      # Number of procedures
+    Insurance_Type: str  # Private, Medicare, etc.
+    Num_Comorbidities: int
+    Visitors_Count: int
+    Blood_Sugar_Level: int
+    Admission_Deposit: int
+    Diagnosis: str
+    Severity_Score: int
+    Ward_Type: str       # General, Private, ICU
 
 class PredictionResponse(BaseModel):
     prediction: int
     prediction_label: str
     confidence: float
     probabilities: Dict[str, float]
+    contributing_factors: List[str] = []
 
 class Patient(BaseModel):
     model_config = ConfigDict(extra="ignore")
@@ -113,7 +120,7 @@ async def train_model():
     
     try:
         # Load REAL dataset
-        logger.info("Loading Indian Hospital Dataset...")
+        logger.info("Loading Comprehensive Healthcare Dataset...")
         df = load_real_dataset()
         
         if df is None:

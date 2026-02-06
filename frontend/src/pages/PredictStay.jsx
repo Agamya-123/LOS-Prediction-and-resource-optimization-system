@@ -11,15 +11,32 @@ import { Activity, TrendingUp, TrendingDown } from 'lucide-react';
 const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
 const API = `${BACKEND_URL}/api`;
 
+const DEPARTMENT_DIAGNOSES = {
+  'Cardiology': ['Heart Failure', 'Coronary Artery Disease', 'Angina'],
+  'Neurology': ['Stroke', 'Epilepsy', 'Migraine'],
+  'Orthopedics': ['Hip Fracture', 'Knee Replacement', 'Back Pain'],
+  'Pulmonology': ['Viral Infection', 'Pneumonia', 'Bronchitis', 'COPD', 'Asthma Attack'],
+  'Gastroenterology': ['Gastritis', 'Pancreatitis', 'Appendicitis'],
+  'Pediatrics': ['Viral Infection', 'Asthma Attack', 'Dehydration'],
+  'Oncology': ['Tumor Surgery', 'Chemotherapy', 'Radiotherapy'],
+  'Gynecology': ['C-Section', 'Normal Delivery', 'Hysterectomy']
+};
+
 const PredictStay = () => {
   const [formData, setFormData] = useState({
     patient_name: '',
-    Age: 50,
+    Age: 45,
     Gender: 'Male',
     Admission_Type: 'Emergency',
     Department: 'Cardiology',
-    Comorbidity: 'None',
-    Procedures: 0
+    Insurance_Type: 'Private',
+    Num_Comorbidities: 1,
+    Visitors_Count: 2,
+    Blood_Sugar_Level: 120,
+    Admission_Deposit: 5000,
+    Diagnosis: '',
+    Severity_Score: 2,
+    Ward_Type: 'General'
   });
   const [prediction, setPrediction] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -32,7 +49,7 @@ const PredictStay = () => {
     try {
       // prepare payload matching backend PatientInput schema
       const { patient_name, ...patientData } = formData;
-      
+
       const payload = {
         patient_input: patientData,
         patient_name: patient_name
@@ -49,11 +66,11 @@ const PredictStay = () => {
       console.error(error);
       let errorMessage = 'Prediction failed';
       if (error.response?.data?.detail) {
-          if (Array.isArray(error.response.data.detail)) {
-              errorMessage = error.response.data.detail.map(e => e.msg).join(', ');
-          } else {
-              errorMessage = error.response.data.detail;
-          }
+        if (Array.isArray(error.response.data.detail)) {
+          errorMessage = error.response.data.detail.map(e => e.msg).join(', ');
+        } else {
+          errorMessage = error.response.data.detail;
+        }
       }
       toast.error(errorMessage);
     } finally {
@@ -62,7 +79,16 @@ const PredictStay = () => {
   };
 
   const updateField = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData(prev => {
+      const newData = { ...prev, [field]: value };
+
+      // Reset diagnosis if department changes
+      if (field === 'Department') {
+        newData.Diagnosis = '';
+      }
+
+      return newData;
+    });
   };
 
   return (
@@ -82,7 +108,7 @@ const PredictStay = () => {
             </CardHeader>
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-6">
-                
+
                 {/* Patient Name */}
                 <div>
                   <Label htmlFor="patient_name">Patient Name *</Label>
@@ -134,7 +160,7 @@ const PredictStay = () => {
                         <SelectItem value="Emergency">Emergency</SelectItem>
                         <SelectItem value="Urgent">Urgent</SelectItem>
                         <SelectItem value="Elective">Elective</SelectItem>
-                        <SelectItem value="Referral">Referral</SelectItem>
+                        <SelectItem value="Trauma">Trauma</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -151,35 +177,116 @@ const PredictStay = () => {
                         <SelectItem value="Gynecology">Gynecology</SelectItem>
                         <SelectItem value="Oncology">Oncology</SelectItem>
                         <SelectItem value="Pediatrics">Pediatrics</SelectItem>
+                        <SelectItem value="Gastroenterology">Gastroenterology</SelectItem>
+                        <SelectItem value="Pulmonology">Pulmonology</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                 </div>
 
-                {/* Comorbidity & Procedures */}
+                {/* Insurance & Ward Type */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
-                    <Label htmlFor="Comorbidity">Comorbidity</Label>
-                    <Select value={formData.Comorbidity} onValueChange={(v) => updateField('Comorbidity', v)}>
+                    <Label htmlFor="Insurance_Type">Insurance Type</Label>
+                    <Select value={formData.Insurance_Type} onValueChange={(v) => updateField('Insurance_Type', v)}>
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="None">None</SelectItem>
-                        <SelectItem value="Diabetes">Diabetes</SelectItem>
-                        <SelectItem value="Hypertension">Hypertension</SelectItem>
-                        <SelectItem value="Heart Disease">Heart Disease</SelectItem>
-                        <SelectItem value="Cancer">Cancer</SelectItem>
+                        <SelectItem value="Private">Private</SelectItem>
+                        <SelectItem value="Medicare">Medicare</SelectItem>
+                        <SelectItem value="Medicaid">Medicaid</SelectItem>
+                        <SelectItem value="Uninsured">Uninsured</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
                   <div>
-                    <Label htmlFor="Procedures">Number of Procedures</Label>
+                    <Label htmlFor="Ward_Type">Ward Type</Label>
+                    <Select value={formData.Ward_Type} onValueChange={(v) => updateField('Ward_Type', v)}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="General">General</SelectItem>
+                        <SelectItem value="Semi-Private">Semi-Private</SelectItem>
+                        <SelectItem value="Private">Private</SelectItem>
+                        <SelectItem value="ICU">ICU</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
+
+                {/* Diagnosis & Severity */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="Diagnosis">Diagnosis</Label>
+                    <Select value={formData.Diagnosis} onValueChange={(v) => updateField('Diagnosis', v)}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select Diagnosis" />
+                      </SelectTrigger>
+                      <SelectContent className="max-h-[200px]">
+                        {(DEPARTMENT_DIAGNOSES[formData.Department] || []).map((diag) => (
+                          <SelectItem key={diag} value={diag}>{diag}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <Label htmlFor="Severity_Score">Severity Score (1-5)</Label>
                     <Input
-                      id="Procedures"
+                      id="Severity_Score"
                       type="number"
-                      value={formData.Procedures}
-                      onChange={(e) => updateField('Procedures', parseInt(e.target.value))}
+                      value={formData.Severity_Score}
+                      onChange={(e) => updateField('Severity_Score', parseInt(e.target.value))}
+                      min="1"
+                      max="5"
+                    />
+                  </div>
+                </div>
+
+                {/* Comorbidities & Visitors */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="Num_Comorbidities">Num Comorbidities</Label>
+                    <Input
+                      id="Num_Comorbidities"
+                      type="number"
+                      value={formData.Num_Comorbidities}
+                      onChange={(e) => updateField('Num_Comorbidities', parseInt(e.target.value))}
+                      min="0"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="Visitors_Count">Visitors Count</Label>
+                    <Input
+                      id="Visitors_Count"
+                      type="number"
+                      value={formData.Visitors_Count}
+                      onChange={(e) => updateField('Visitors_Count', parseInt(e.target.value))}
+                      min="0"
+                    />
+                  </div>
+                </div>
+
+                {/* Blood Sugar & Deposit */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label htmlFor="Blood_Sugar_Level">Blood Sugar Level</Label>
+                    <Input
+                      id="Blood_Sugar_Level"
+                      type="number"
+                      value={formData.Blood_Sugar_Level}
+                      onChange={(e) => updateField('Blood_Sugar_Level', parseInt(e.target.value))}
+                      min="0"
+                    />
+                  </div>
+                  <div>
+                    <Label htmlFor="Admission_Deposit">Admission Deposit</Label>
+                    <Input
+                      id="Admission_Deposit"
+                      type="number"
+                      value={formData.Admission_Deposit}
+                      onChange={(e) => updateField('Admission_Deposit', parseInt(e.target.value))}
                       min="0"
                     />
                   </div>
@@ -208,20 +315,18 @@ const PredictStay = () => {
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className={`p-6 rounded-lg border-2 ${
-                  prediction.prediction === 0
-                    ? 'bg-emerald-50 border-emerald-300'
-                    : 'bg-amber-50 border-amber-300'
-                }`}>
+                <div className={`p-6 rounded-lg border-2 ${prediction.prediction === 0
+                  ? 'bg-emerald-50 border-emerald-300'
+                  : 'bg-amber-50 border-amber-300'
+                  }`}>
                   {prediction.prediction === 0 ? (
                     <TrendingDown className="w-12 h-12 text-emerald-600 mb-3" />
                   ) : (
                     <TrendingUp className="w-12 h-12 text-amber-600 mb-3" />
                   )}
                   <p className="text-sm font-medium text-slate-600">Predicted Stay</p>
-                  <p className={`text-2xl font-bold mt-1 ${
-                    prediction.prediction === 0 ? 'text-emerald-700' : 'text-amber-700'
-                  }`}>
+                  <p className={`text-2xl font-bold mt-1 ${prediction.prediction === 0 ? 'text-emerald-700' : 'text-amber-700'
+                    }`}>
                     {prediction.prediction_label}
                   </p>
                 </div>
@@ -233,6 +338,23 @@ const PredictStay = () => {
                       {(prediction.confidence * 100).toFixed(1)}%
                     </span>
                   </div>
+                  
+                  {/* Contributing Factors */}
+                  {prediction.contributing_factors && prediction.contributing_factors.length > 0 ? (
+                    <div className="p-3 bg-blue-50 rounded border border-blue-200">
+                      <p className="text-sm font-semibold text-blue-800 mb-2">Contributing Factors:</p>
+                      <ul className="list-disc list-inside text-sm text-blue-700 space-y-1">
+                        {prediction.contributing_factors.map((factor, idx) => (
+                          <li key={idx}>{factor}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ) : (
+                    <div className="p-3 bg-slate-50 rounded border text-sm text-slate-600">
+                      No critical high-risk flags detected.
+                    </div>
+                  )}
+
                   {prediction.bed_number && (
                     <div className="flex justify-between items-center p-3 bg-teal-50 rounded border border-teal-200">
                       <span className="text-sm text-teal-700">Assigned Bed</span>
