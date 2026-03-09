@@ -3,6 +3,7 @@ import numpy as np
 import joblib
 import os
 from datetime import datetime, timezone
+import shap
 
 # Define comprehensive features expected by the new model
 FEATURE_COLS = [
@@ -23,6 +24,8 @@ def load_model_artifacts():
         data = joblib.load(MODEL_PATH)
         return {
             "model": data["model"],
+            "anomaly_detector": data.get("anomaly_detector"),
+            "shap_explainer": data.get("shap_explainer"),
             "metadata": data["metadata"]
         }
     except Exception as e:
@@ -82,15 +85,85 @@ def predict_patient_stay(patient_data, artifacts):
             contributing_factors.append(f"Elderly Patient ({age})")
         if comorb > 2:
             contributing_factors.append(f"Multiple Comorbidities ({comorb})")
-        if adm_type == "Trauma":
-            contributing_factors.append("Trauma Case")
-            
+        
+        # --- NEW FEATURE: Actionable AI Recommendations ---
+        recommendations = []
+        if input_data.get('Blood_Sugar_Level', [0])[0] > 140:
+            recommendations.append("Endocrinology Consult for Hyperglycemia")
+        if severity >= 4:
+            recommendations.append("Priority ICU Escalation Protocol & Continuous Vitals")
+        if age > 65 and comorb >= 2:
+            recommendations.append("Geriatric Palliative & High-Risk Fall Precautions")
+        if diagnosis in ['Stroke', 'Heart Failure']:
+            recommendations.append(f"Immediate {diagnosis} Rapid Response Pathway")
+        if len(recommendations) == 0:
+            recommendations.append("Standard Care Protocol")
+
+        # --- NEW FEATURE: Clinical Anomaly Detection ---
+        is_anomaly = False
+        anomaly_score = 1
+        if 'anomaly_detector' in artifacts and artifacts['anomaly_detector'] is not None:
+            anomaly_detector = artifacts['anomaly_detector']
+            try:
+                preprocessor = model.named_steps['preprocessor']
+                df_transformed = preprocessor.transform(df)
+                anomaly_score = int(anomaly_detector.predict(df_transformed)[0])
+                if anomaly_score == -1:
+                    is_anomaly = True
+                    # Push anomaly warning to top of factors
+                    contributing_factors.insert(0, "⚠️ ANOMALY DETECTED: Patient's clinical presentation is highly unusual (Top 5% outlier). Review data for entry errors or rare conditions.")
+            except Exception as e:
+                print(f"Error during anomaly detection: {e}")
+
+        # --- NEW FEATURE: Personalized XAI (SHAP) ---
+        patient_shap_explanation = {}
+        if 'shap_explainer' in artifacts and artifacts['shap_explainer'] is not None:
+            try:
+                explainer = artifacts['shap_explainer']
+                preprocessor = model.named_steps['preprocessor']
+                df_transformed = preprocessor.transform(df)
+                
+                # Calculate SHAP values for this specific patient
+                shap_values = explainer.shap_values(df_transformed)
+                # Some explainers return list (one for each class), take index 1 for positive class (Long Stay)
+                if isinstance(shap_values, list):
+                     shap_vals_patient = shap_values[1][0]
+                else:
+                     shap_vals_patient = shap_values[0]
+
+                # Map values back to feature names
+                feature_names = preprocessor.get_feature_names_out()
+                clean_names = [name.split('__')[-1] for name in feature_names]
+                
+                shap_dict = {}
+                for feature, score in zip(clean_names, shap_vals_patient):
+                     base_feature = feature
+                     for col in df.columns:
+                         if feature.startswith(f"{col}_"):
+                             base_feature = col
+                             break
+                     shap_dict[base_feature] = shap_dict.get(base_feature, 0) + score
+                
+                patient_shap_explanation = dict(sorted(shap_dict.items(), key=lambda item: abs(item[1]), reverse=True))
+
+                # Dynamically append top SHAP factors into contributing factors!
+                top_3_driving = [k for k,v in patient_shap_explanation.items() if v > 0.1][:3]
+                for p_factor in top_3_driving:
+                     val = df[p_factor].iloc[0]
+                     contributing_factors.append(f"AI Identified Risk Driver: {p_factor} ({val})")
+
+            except Exception as e:
+                print(f"Error during SHAP calculation: {e}")
+
         return {
             'prediction': int(prediction),
             'prediction_label': 'Long Stay (>7 days)' if prediction == 1 else 'Short Stay (≤7 days)',
             'confidence': float(probability[prediction]),
             'probabilities': {'short_stay': float(probability[0]), 'long_stay': float(probability[1])},
-            'contributing_factors': contributing_factors
+            'contributing_factors': contributing_factors,
+            'is_anomaly': is_anomaly,
+            'recommended_actions': recommendations,
+            'shap_explanation': patient_shap_explanation  # Return true explainability
         }
     except Exception as e:
         print(f"Prediction logic error: {e}")
@@ -125,7 +198,8 @@ def train_and_compare_models(df):
         RandomForestClassifier, 
         GradientBoostingClassifier, 
         HistGradientBoostingClassifier,
-        VotingClassifier
+        VotingClassifier,
+        IsolationForest
     )
     from sklearn.metrics import roc_auc_score, accuracy_score
     import heapq
@@ -148,7 +222,7 @@ def train_and_compare_models(df):
     
     categorical_transformer = Pipeline(steps=[
         ('imputer', SimpleImputer(strategy='constant', fill_value='missing')),
-        ('onehot', OneHotEncoder(handle_unknown='ignore'))
+        ('onehot', OneHotEncoder(handle_unknown='ignore', sparse_output=False))
     ])
     
     preprocessor = ColumnTransformer(
@@ -254,6 +328,50 @@ def train_and_compare_models(df):
     
     print(f"Best Model: {best_name} (AUC: {best_auc_val:.4f})")
 
+    # --- NEW FEATURE: Train Clinical Anomaly Detector ---
+    print("Training Clinical Anomaly Detector (Isolation Forest)...")
+    try:
+        # Preprocess features using the best pipeline's preprocessor to train IsolationForest
+        best_preprocessor = best_pipeline_obj.named_steps['preprocessor']
+        X_train_transformed = best_preprocessor.transform(X_train)
+        
+        # Detect top 5% clinical outliers
+        anomaly_detector = IsolationForest(contamination=0.05, random_state=42)
+        anomaly_detector.fit(X_train_transformed)
+        
+        results['anomaly_detector'] = anomaly_detector
+        print("Anomaly Detector trained successfully.")
+    except Exception as e:
+        print(f"Failed to train Anomaly Detector: {e}")
+        results['anomaly_detector'] = None
+
+    # --- NEW FEATURE: Build Global SHAP Explainer ---
+    print("Building Global SHAP Explainer...")
+    try:
+        best_preprocessor = best_pipeline_obj.named_steps['preprocessor']
+        X_train_transformed = best_preprocessor.transform(X_train)
+        
+        # We need the inner classifier to build SHAP
+        clf = best_pipeline_obj.named_steps['classifier']
+        
+        # Sample background dataset for SHAP to avoid massive memory usage
+        background_sample = shap.sample(X_train_transformed, 100)
+        
+        # TreeExplainer works for RF, GB, HistGB. LinearExplainer for Logistic
+        if best_name in ['RandomForest', 'GradientBoosting', 'HistGradientBoosting']:
+            explainer = shap.TreeExplainer(clf, feature_perturbation='interventional', data=background_sample)
+        elif best_name == 'LogisticRegression':
+            explainer = shap.LinearExplainer(clf, background_sample)
+        else:
+            # Fallback Kernel explainer for Ensembles (Very slow, but works)
+            explainer = shap.KernelExplainer(clf.predict_proba, background_sample)
+            
+        results['shap_explainer'] = explainer
+        print("SHAP Explainer built successfully.")
+    except Exception as e:
+        print(f"Failed to build SHAP explainer: {e}")
+        results['shap_explainer'] = None
+
     # 8. Feature Importance
     try:
         # Helper to get feature importance from a pipeline
@@ -269,11 +387,14 @@ def train_and_compare_models(df):
         importances = None
         preproc_ref = None
         
-        if best_name == 'VotingEnsemble':
-            # Use the best single model for feature importance display
-            print("Using best single model for feature importance visualization.")
-            best_single = [x for x in trained_estimators if x[0] != 'VotingEnsemble'][0]
-            importances, preproc_ref = get_importance(best_single[1])
+        if best_name == 'VotingEnsemble' or best_name == 'HistGradientBoosting':
+            # Use a model that natively supports feature importance (RF or GB)
+            print("Using fallback model for global feature importance visualization.")
+            for name, pipeline, _ in trained_estimators:
+                if name not in ['VotingEnsemble', 'HistGradientBoosting']:
+                    importances, preproc_ref = get_importance(pipeline)
+                    if importances is not None:
+                        break
         else:
             importances, preproc_ref = get_importance(best_pipeline_obj)
 
@@ -298,6 +419,8 @@ def train_and_compare_models(df):
              results['feature_importance'] = {}
 
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"Feature importance extraction warning: {e}")
         results['feature_importance'] = {}
 
@@ -320,6 +443,8 @@ def save_model_artifacts(results):
         
         joblib.dump({
             'model': model,
+            'anomaly_detector': results.get('anomaly_detector'),
+            'shap_explainer': results.get('shap_explainer'),
             'metadata': metadata
         }, MODEL_PATH)
         

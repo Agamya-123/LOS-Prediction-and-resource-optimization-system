@@ -58,6 +58,9 @@ class PredictionResponse(BaseModel):
     confidence: float
     probabilities: Dict[str, float]
     contributing_factors: List[str] = []
+    is_anomaly: Optional[bool] = False
+    recommended_actions: List[str] = []
+    shap_explanation: Optional[Dict[str, float]] = None
 
 class Patient(BaseModel):
     model_config = ConfigDict(extra="ignore")

@@ -338,7 +338,7 @@ const PredictStay = () => {
                       {(prediction.confidence * 100).toFixed(1)}%
                     </span>
                   </div>
-                  
+
                   {/* Contributing Factors */}
                   {prediction.contributing_factors && prediction.contributing_factors.length > 0 ? (
                     <div className="p-3 bg-blue-50 rounded border border-blue-200">
@@ -356,11 +356,41 @@ const PredictStay = () => {
                   )}
 
                   {prediction.bed_number && (
-                    <div className="flex justify-between items-center p-3 bg-teal-50 rounded border border-teal-200">
+                    <div className="flex justify-between items-center p-3 bg-teal-50 rounded border border-teal-200 mb-4">
                       <span className="text-sm text-teal-700">Assigned Bed</span>
                       <span className="font-mono font-bold text-teal-900">
                         Bed #{prediction.bed_number}
                       </span>
+                    </div>
+                  )}
+
+                  {/* Anomaly Detection UI */}
+                  {prediction.is_anomaly && (
+                    <div className="p-3 bg-red-50 rounded border border-red-200 shadow-sm mt-3 animate-pulse">
+                      <p className="text-sm font-semibold text-red-800 flex items-center mb-1">
+                        <Activity className="w-4 h-4 mr-2" />
+                        Clinical Anomaly Detected
+                      </p>
+                      <p className="text-xs text-red-700 leading-tight">
+                        This patient's clinical presentation is highly unusual (Top 5% outlier). Please review data for potential entry errors, complex or rare clinical conditions.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* AI Recommendations UI */}
+                  {prediction.recommended_actions && prediction.recommended_actions.length > 0 && (
+                    <div className="p-3 bg-indigo-50 rounded border border-indigo-200 shadow-sm mt-3">
+                      <p className="text-sm font-semibold text-indigo-800 mb-2 flex items-center">
+                        AI Recommended Actions:
+                      </p>
+                      <ul className="text-sm text-indigo-700 space-y-1">
+                        {prediction.recommended_actions.map((action, idx) => (
+                          <li key={idx} className="flex items-start">
+                            <span className="mr-2 text-indigo-500 font-bold">•</span>
+                            <span>{action}</span>
+                          </li>
+                        ))}
+                      </ul>
                     </div>
                   )}
                 </div>
