@@ -5,7 +5,10 @@ An AI-powered application designed to optimize hospital bed allocation and predi
 ## 🚀 Features
 
 *   **Real-time Bed Management**: Track bed status (Available, Occupied, Cleaning) in real-time.
-*   **AI-Driven LOS Prediction**: Predict patient Length of Stay using Machine Learning models (XGBoost/RandomForest) based on patient data (Age, Comorbidities, etc.).
+*   **AI-Driven LOS Prediction**: Predict patient Length of Stay using Machine Learning models (Voting Ensemble: XGBoost, Random Forest, HistGradientBoosting) based on patient data.
+*   **Clinical Anomaly Detection**: Unsupervised Isolation Forest acts as a safety net to flag multivariate clinical outliers and data entry errors.
+*   **Actionable AI Recommendations**: Active Clinical Decision Support System (CDSS) evaluates data to generate real-time medical directives.
+*   **Personalized eXplainable AI (XAI)**: Utilizes Game Theory mathematics via SHAP to deconstruct neural weights and provide complete transparency into individual patient risk drivers.
 *   **Interactive Dashboard**: Visual analytics for bed occupancy, patient demographics, and prediction statistics.
 *   **Patient Management**: Streamlined admission and discharge workflows.
 *   **Smart Allocation**: Intelligent bed assignment suggestions based on predicted stay duration.
@@ -83,7 +86,10 @@ An AI-powered application designed to optimize hospital bed allocation and predi
 
 ## 🧠 Machine Learning Model
 
-The system uses a machine learning model to predict the Length of Stay (Short Stay vs. Long Stay).
+The system uses a parallel inference ML engine to predict the Length of Stay (Short Stay vs. Long Stay) and provide clinical insights.
+*   **LOS Prediction**: Voting Ensemble Classifier combining Random Forest, XGBoost, and HistGradientBoosting.
+*   **Anomaly Detection**: Isolation Forest algorithm to flag top 5% of multidimensional clinical outliers.
+*   **XAI Explainer**: SHAP TreeExplainer calculates the exact algorithmic marginal contribution of variables for real-time transparency.
 *   **Training**: The model can be retrained via the API endpoint `/api/train`.
 *   **Input Features**: Age, Gender, Admission Type, Department, Comorbidity, Number of Procedures.
 

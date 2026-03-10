@@ -65,3 +65,9 @@ venv.bak/
 
 # Braindump
 .gemini/
+
+# Project Reports and Diagrams
+*.pptx
+*.docx
+Diagram_*.png
+backend/debug_output.txt
