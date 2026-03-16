@@ -308,122 +308,142 @@ const PredictStay = () => {
         <div>
           {prediction && (
             <Card className="sticky top-24">
-              <CardHeader>
-                <CardTitle className="flex items-center">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center text-base">
                   <Activity className="w-5 h-5 mr-2" />
                   Prediction Result
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className={`p-6 rounded-lg border-2 ${prediction.prediction === 0
+
+                {/* ── Section 1: Main Prediction Hero ── */}
+                <div className={`p-5 rounded-lg border-2 text-center ${prediction.prediction === 0
                   ? 'bg-emerald-50 border-emerald-300'
                   : 'bg-amber-50 border-amber-300'
                   }`}>
-                  {prediction.prediction === 0 ? (
-                    <TrendingDown className="w-12 h-12 text-emerald-600 mb-3" />
-                  ) : (
-                    <TrendingUp className="w-12 h-12 text-amber-600 mb-3" />
-                  )}
-                  <p className="text-sm font-medium text-slate-600">Predicted Stay</p>
-                  <p className={`text-2xl font-bold mt-1 ${prediction.prediction === 0 ? 'text-emerald-700' : 'text-amber-700'
-                    }`}>
+                  <div className="flex justify-center mb-2">
+                    {prediction.prediction === 0 ? (
+                      <TrendingDown className="w-10 h-10 text-emerald-600" />
+                    ) : (
+                      <TrendingUp className="w-10 h-10 text-amber-600" />
+                    )}
+                  </div>
+                  <p className="text-xs font-medium text-slate-500 uppercase tracking-wide">Predicted Stay</p>
+                  <p className={`text-xl font-bold mt-1 ${prediction.prediction === 0 ? 'text-emerald-700' : 'text-amber-700'}`}>
                     {prediction.prediction_label}
+                  </p>
+                  <p className="text-2xl font-mono font-bold mt-2 text-slate-800">
+                    {(prediction.confidence * 100).toFixed(1)}%
+                    <span className="text-xs font-normal text-slate-500 ml-1">confidence</span>
                   </p>
                 </div>
 
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center p-3 bg-slate-50 rounded border">
-                    <span className="text-sm text-slate-600">Confidence</span>
-                    <span className="font-mono font-bold text-slate-900">
-                      {(prediction.confidence * 100).toFixed(1)}%
-                    </span>
-                  </div>
-
-                  {/* Contributing Factors */}
-                  {prediction.contributing_factors && prediction.contributing_factors.length > 0 ? (
-                    <div className="p-3 bg-blue-50 rounded border border-blue-200">
-                      <p className="text-sm font-semibold text-blue-800 mb-2">Contributing Factors:</p>
-                      <ul className="list-disc list-inside text-sm text-blue-700 space-y-1">
-                        {prediction.contributing_factors.map((factor, idx) => (
-                          <li key={idx}>{factor}</li>
-                        ))}
-                      </ul>
-                    </div>
-                  ) : (
-                    <div className="p-3 bg-slate-50 rounded border text-sm text-slate-600">
-                      No critical high-risk flags detected.
-                    </div>
-                  )}
-
+                {/* ── Section 2: Quick Stats Row ── */}
+                <div className="grid grid-cols-2 gap-2">
                   {prediction.bed_number && (
-                    <div className="flex justify-between items-center p-3 bg-teal-50 rounded border border-teal-200 mb-4">
-                      <span className="text-sm text-teal-700">Assigned Bed</span>
-                      <span className="font-mono font-bold text-teal-900">
-                        Bed #{prediction.bed_number}
-                      </span>
+                    <div className="p-3 bg-teal-50 rounded-lg border border-teal-200 text-center">
+                      <p className="text-xs text-teal-600 font-medium">Assigned Bed</p>
+                      <p className="text-lg font-bold text-teal-800 font-mono">#{prediction.bed_number}</p>
                     </div>
                   )}
-
-                  {/* Anomaly Detection UI */}
-                  {prediction.is_anomaly && (
-                    <div className="p-3 bg-red-50 rounded border border-red-200 shadow-sm mt-3 animate-pulse">
-                      <p className="text-sm font-semibold text-red-800 flex items-center mb-1">
-                        <Activity className="w-4 h-4 mr-2" />
-                        Clinical Anomaly Detected
-                      </p>
-                      <p className="text-xs text-red-700 leading-tight">
-                        This patient's clinical presentation is highly unusual (Top 5% outlier). Please review data for potential entry errors, complex or rare clinical conditions.
-                      </p>
-                    </div>
-                  )}
-
-                  {/* AI Recommendations UI */}
-                  {prediction.recommended_actions && prediction.recommended_actions.length > 0 && (
-                    <div className="p-3 bg-indigo-50 rounded border border-indigo-200 shadow-sm mt-3">
-                      <p className="text-sm font-semibold text-indigo-800 mb-2 flex items-center">
-                        AI Recommended Actions:
-                      </p>
-                      <ul className="text-sm text-indigo-700 space-y-1">
-                        {prediction.recommended_actions.map((action, idx) => (
-                          <li key={idx} className="flex items-start">
-                            <span className="mr-2 text-indigo-500 font-bold">•</span>
-                            <span>{action}</span>
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-
-                <div className="pt-4 border-t">
-                  <p className="text-xs text-slate-500 mb-2">Probabilities</p>
-                  <div className="space-y-2">
-                    <div>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span>Short Stay</span>
-                        <span className="font-mono">{(prediction.probabilities.short_stay * 100).toFixed(1)}%</span>
+                  <div className="p-3 bg-slate-50 rounded-lg border text-center" style={{ gridColumn: prediction.bed_number ? 'auto' : '1 / -1' }}>
+                    <p className="text-xs text-slate-500 font-medium mb-1">Probability</p>
+                    <div className="flex items-center gap-1">
+                      <div className="flex-1">
+                        <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                          <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${prediction.probabilities.short_stay * 100}%` }} />
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-0.5">Short {(prediction.probabilities.short_stay * 100).toFixed(0)}%</p>
                       </div>
-                      <div className="h-2 bg-slate-100 rounded-full">
-                        <div
-                          className="h-full bg-emerald-500 rounded-full"
-                          style={{ width: `${prediction.probabilities.short_stay * 100}%` }}
-                        />
-                      </div>
-                    </div>
-                    <div>
-                      <div className="flex justify-between text-xs mb-1">
-                        <span>Long Stay</span>
-                        <span className="font-mono">{(prediction.probabilities.long_stay * 100).toFixed(1)}%</span>
-                      </div>
-                      <div className="h-2 bg-slate-100 rounded-full">
-                        <div
-                          className="h-full bg-amber-500 rounded-full"
-                          style={{ width: `${prediction.probabilities.long_stay * 100}%` }}
-                        />
+                      <div className="flex-1">
+                        <div className="h-2 bg-slate-200 rounded-full overflow-hidden">
+                          <div className="h-full bg-amber-500 rounded-full" style={{ width: `${prediction.probabilities.long_stay * 100}%` }} />
+                        </div>
+                        <p className="text-[10px] text-slate-500 mt-0.5">Long {(prediction.probabilities.long_stay * 100).toFixed(0)}%</p>
                       </div>
                     </div>
                   </div>
                 </div>
+
+                {/* ── Section 3: Anomaly Alert (if triggered) ── */}
+                {prediction.is_anomaly && (
+                  <div className="p-3 bg-red-50 rounded-lg border-2 border-red-300 shadow-sm animate-pulse">
+                    <p className="text-sm font-bold text-red-800 flex items-center mb-1">
+                      <Activity className="w-4 h-4 mr-2" />
+                      ⚠️ Clinical Anomaly Detected
+                    </p>
+                    <p className="text-xs text-red-700 leading-relaxed">
+                      This patient's clinical presentation is highly unusual (Top 5% outlier). Review data for potential entry errors or rare clinical conditions.
+                    </p>
+                  </div>
+                )}
+
+                {/* ── Section 4: XAI SHAP Visual Explanation ── */}
+                {prediction.shap_explanation && Object.keys(prediction.shap_explanation).length > 0 && (
+                  <div className="p-3 bg-purple-50 rounded-lg border border-purple-200">
+                    <p className="text-sm font-semibold text-purple-800 mb-1">
+                      🧠 XAI: SHAP Feature Explanation
+                    </p>
+                    <p className="text-[10px] text-purple-500 mb-3">
+                      Game Theory mathematics — each feature's exact contribution to this prediction
+                    </p>
+                    <div className="space-y-1.5">
+                      {Object.entries(prediction.shap_explanation).slice(0, 5).map(([feature, value], idx) => (
+                        <div key={idx} className="flex items-center gap-1.5">
+                          <span className="text-[11px] text-purple-700 w-24 truncate font-medium" title={feature}>{feature}</span>
+                          <div className="flex-1 h-3 bg-purple-100 rounded-full overflow-hidden">
+                            <div
+                              className={`h-full rounded-full transition-all ${value > 0 ? 'bg-red-400' : 'bg-emerald-400'}`}
+                              style={{ width: `${Math.min(Math.abs(value) * 150, 100)}%` }}
+                            />
+                          </div>
+                          <span className={`text-[10px] font-mono w-14 text-right font-bold ${value > 0 ? 'text-red-600' : 'text-emerald-600'}`}>
+                            {value > 0 ? '+' : ''}{value.toFixed(3)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="flex gap-4 mt-2">
+                      <span className="text-[10px] text-red-500 flex items-center gap-1"><span className="w-2 h-2 bg-red-400 rounded-full inline-block"></span> → Long Stay</span>
+                      <span className="text-[10px] text-emerald-500 flex items-center gap-1"><span className="w-2 h-2 bg-emerald-400 rounded-full inline-block"></span> → Short Stay</span>
+                    </div>
+                  </div>
+                )}
+
+                {/* ── Section 5: Contributing Factors ── */}
+                {prediction.contributing_factors && prediction.contributing_factors.length > 0 ? (
+                  <div className="p-3 bg-blue-50 rounded-lg border border-blue-200">
+                    <p className="text-sm font-semibold text-blue-800 mb-2">📋 Contributing Factors</p>
+                    <ul className="text-xs text-blue-700 space-y-1">
+                      {prediction.contributing_factors.map((factor, idx) => (
+                        <li key={idx} className="flex items-start">
+                          <span className="mr-1.5 text-blue-400">•</span>
+                          <span>{factor}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-slate-50 rounded-lg border text-xs text-slate-500 text-center">
+                    No critical high-risk flags detected.
+                  </div>
+                )}
+
+                {/* ── Section 6: AI Recommended Actions ── */}
+                {prediction.recommended_actions && prediction.recommended_actions.length > 0 && (
+                  <div className="p-3 bg-indigo-50 rounded-lg border border-indigo-200">
+                    <p className="text-sm font-semibold text-indigo-800 mb-2">💊 AI Recommended Actions</p>
+                    <ul className="text-xs text-indigo-700 space-y-1">
+                      {prediction.recommended_actions.map((action, idx) => (
+                        <li key={idx} className="flex items-start">
+                          <span className="mr-1.5 text-indigo-400 font-bold">→</span>
+                          <span>{action}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
               </CardContent>
             </Card>
           )}

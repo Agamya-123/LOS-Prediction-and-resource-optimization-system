@@ -108,6 +108,8 @@ def predict_patient_stay(patient_data, artifacts):
                 preprocessor = model.named_steps['preprocessor']
                 df_transformed = preprocessor.transform(df)
                 anomaly_score = int(anomaly_detector.predict(df_transformed)[0])
+                raw_score = anomaly_detector.score_samples(df_transformed)[0]
+                print(f"[ANOMALY CHECK] Score: {anomaly_score}, Raw Score: {raw_score:.4f}, Is Anomaly: {anomaly_score == -1}")
                 if anomaly_score == -1:
                     is_anomaly = True
                     # Push anomaly warning to top of factors
@@ -146,11 +148,14 @@ def predict_patient_stay(patient_data, artifacts):
                 
                 patient_shap_explanation = dict(sorted(shap_dict.items(), key=lambda item: abs(item[1]), reverse=True))
 
-                # Dynamically append top SHAP factors into contributing factors!
-                top_3_driving = [k for k,v in patient_shap_explanation.items() if v > 0.1][:3]
-                for p_factor in top_3_driving:
-                     val = df[p_factor].iloc[0]
-                     contributing_factors.append(f"AI Identified Risk Driver: {p_factor} ({val})")
+                # Dynamically append top 3 SHAP factors into contributing factors!
+                # Always show top 3 by absolute value for full XAI transparency
+                sorted_features = sorted(patient_shap_explanation.items(), key=lambda item: abs(item[1]), reverse=True)
+                top_3_driving = sorted_features[:3]
+                for p_factor, shap_val in top_3_driving:
+                     val = df[p_factor].iloc[0] if p_factor in df.columns else p_factor
+                     direction = "↑ Higher Stay" if shap_val > 0 else "↓ Lower Stay"
+                     contributing_factors.append(f"🔬 AI Risk Driver: {p_factor} = {val} (SHAP: {shap_val:+.3f} {direction})")
 
             except Exception as e:
                 print(f"Error during SHAP calculation: {e}")
