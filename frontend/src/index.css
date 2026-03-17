@@ -104,3 +104,39 @@ code {
         border-bottom-color: inherit;
     }
 }
+
+@layer utilities {
+    .custom-scrollbar::-webkit-scrollbar {
+        width: 4px;
+        height: 4px;
+    }
+    .custom-scrollbar::-webkit-scrollbar-track {
+        @apply bg-transparent;
+    }
+    .custom-scrollbar::-webkit-scrollbar-thumb {
+        @apply bg-slate-300/40 rounded-full hover:bg-teal-400/60 transition-colors;
+    }
+    
+    /* Utility for hidden but functional scroll */
+    .no-scrollbar::-webkit-scrollbar {
+        display: none;
+    }
+    .no-scrollbar {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+    }
+
+    /* Glass Panels */
+    .glass {
+        @apply bg-white/70 backdrop-blur-xl border border-white/40 shadow-xl;
+    }
+    
+    /* Animation Utilities */
+    .animate-glow {
+        animation: glow 2s ease-in-out infinite alternate;
+    }
+    @keyframes glow {
+        from { box-shadow: 0 0 5px -5px theme('colors.teal.400'); }
+        to { box-shadow: 0 0 20px 2px theme('colors.teal.400/30'); }
+    }
+}
