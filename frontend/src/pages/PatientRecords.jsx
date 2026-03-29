@@ -107,7 +107,7 @@ const PatientRecords = () => {
                       </div>
                       <div className="space-y-1">
                          <h3 className="text-lg font-black text-slate-800 leading-tight">{patient.patient_name}</h3>
-                         <p className="text-[10px] font-mono text-slate-400 uppercase tracking-widest">{patient.id.slice(0, 12)}</p>
+                         <p className="text-[11px] font-mono font-bold text-indigo-500 bg-indigo-50 px-2 py-0.5 rounded-lg inline-block tracking-wide">{patient.id}</p>
                       </div>
                       <div className="mt-6 w-full">
                          <Badge 
@@ -126,11 +126,12 @@ const PatientRecords = () => {
                    <div className="flex-1 p-8">
                       <div className="grid grid-cols-2 md:grid-cols-4 gap-x-8 gap-y-6">
                          {[
-                           { label: 'Demographics', val: `${patient.patient_data?.Age || '?'}Y / ${patient.patient_data?.Gender?.charAt(0) || '?'}`, icon: Calendar },
+                           { label: 'Patient ID', val: patient.id, icon: User },
+                            { label: 'Demographics', val: `${patient.patient_data?.Age || '?'}Y / ${patient.patient_data?.Gender?.charAt(0) || '?'}`, icon: Calendar },
                            { label: 'Location', val: patient.bed_number ? `Unit #${patient.bed_number}` : 'Standby', icon: BedDouble },
                            { label: 'Ward Type', val: patient.patient_data?.Ward_Type || 'General', icon: ShieldCheck },
                            { label: 'Department', val: patient.patient_data?.Department || 'N/A', icon: Activity },
-                           { label: 'Diagnosis', val: patient.patient_data?.Diagnosis || 'Routine', icon: ClipboardList, full: true },
+                           { label: 'Diagnosis', val: patient.patient_data?.Diagnosis || 'Routine', icon: ClipboardList },
                            { label: 'Risk Factor', val: `${patient.patient_data?.Severity_Score || 0}/5 Score`, icon: ShieldAlert },
                            { label: 'Trust Index', val: `${((patient.confidence || 0) * 100).toFixed(1)}% Acc.`, icon: Zap },
                            { label: 'Stay Outlook', val: patient.predicted_discharge || 'Pending', icon: TrendingUp },

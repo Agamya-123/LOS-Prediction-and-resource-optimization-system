@@ -71,3 +71,10 @@ venv.bak/
 *.docx
 Diagram_*.png
 backend/debug_output.txt
+
+# Temporary Training Data
+temp_training/
+
+# Stray model files (legitimate models are in backend/models/)
+backend/universal_model_*.pkl
+backend/model_features.json

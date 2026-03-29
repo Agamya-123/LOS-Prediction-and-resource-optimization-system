@@ -239,7 +239,12 @@ const PredictStay = () => {
                          <span className="text-[9px] font-bold opacity-70">CONFIDENCE</span>
                       </div>
                       <div className="flex gap-1.5">
-                         <div className="px-3 py-1 bg-white/10 rounded-full border border-white/20 text-[10px] font-bold">MODEL-TRIALIZED</div>
+                         {prediction.patient_id && (
+                            <div className="px-4 py-1.5 bg-white/20 rounded-full border border-white/30 text-[11px] font-black tracking-wider">
+                              ID: {prediction.patient_id}
+                            </div>
+                          )}
+                          <div className="px-3 py-1 bg-white/10 rounded-full border border-white/20 text-[10px] font-bold">ADMITTED</div>
                       </div>
                    </CardContent>
                 </Card>

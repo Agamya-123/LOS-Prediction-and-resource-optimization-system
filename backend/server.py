@@ -2,6 +2,7 @@ from fastapi import FastAPI, APIRouter, HTTPException
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import ReturnDocument
 import os
 import logging
 from pathlib import Path
@@ -39,6 +40,18 @@ db = client[os.environ.get('DB_NAME', 'hospital_db')]
 # Global variable to store model artifacts
 MODEL_ARTIFACTS = None
 
+async def generate_patient_id():
+    """Generate a unique, human-readable patient ID like AGM-2026-0001"""
+    year = datetime.now().year
+    counter_doc = await db.counters.find_one_and_update(
+        {"_id": f"patient_{year}"},
+        {"$inc": {"seq": 1}},
+        upsert=True,
+        return_document=ReturnDocument.AFTER
+    )
+    seq = counter_doc["seq"]
+    return f"AGM-{year}-{seq:04d}"
+
 # Pydantic Models
 class PatientInput(BaseModel):
     Age: int
@@ -66,7 +79,7 @@ class PredictionResponse(BaseModel):
 
 class Patient(BaseModel):
     model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    id: str = Field(default="")  # Will be set by generate_patient_id()
     patient_name: str
     patient_data: Dict[str, Any]
     prediction: int
@@ -126,12 +139,12 @@ async def root():
     return {"status": "Agamya AI Engine Online", "mission": "High Precision Healthcare Logistics"}
 
 @api_router.post("/train")
-async def train_model():
-    """Train the ML model and save artifacts"""
+async def train_model(dataset_path: Optional[str] = None):
+    """Train the ML model on any healthcare CSV (universal pipeline)"""
     global MODEL_ARTIFACTS
     try:
-        logger.info("Initiating Comprehensive Model Optimization...")
-        df = load_real_dataset()
+        logger.info("Initiating Universal ML Pipeline Optimization...")
+        df = load_real_dataset(csv_path=dataset_path)
         if df is None:
              raise HTTPException(status_code=404, detail="Dataset not found or failed to load")
 
@@ -140,11 +153,11 @@ async def train_model():
         MODEL_ARTIFACTS = load_model_artifacts()
         
         return {
-            "message": "Model optimization completed successfully",
+            "message": "Universal pipeline optimization completed",
             "model_comparison": training_results['model_comparison'],
             "best_model": training_results['best_model_name'],
             "best_auc": training_results['best_auc'],
-            "feature_importance": training_results['feature_importance'],
+            "feature_importance": training_results.get('feature_importance', {}),
             "dataset_size": len(df)
         }
     except Exception as e:
@@ -180,7 +193,11 @@ async def create_patient(patient_input: PatientInput, patient_name: str):
         available_bed = await db.beds.find_one({"status": "available"})
         bed_number = available_bed['bed_number'] if available_bed else None
         
+        # Generate unique human-readable patient ID
+        patient_id = await generate_patient_id()
+        
         patient = Patient(
+            id=patient_id,
             patient_name=patient_name,
             patient_data=patient_input.model_dump(),
             prediction=prediction['prediction'],
